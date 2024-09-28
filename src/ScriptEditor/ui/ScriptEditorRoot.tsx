@@ -44,71 +44,69 @@ const openScripts: OpenScript[] = [];
 let currentScript: OpenScript | null = null;
 let vim: boolean = false; // this will be set on mounting the component
 
-export class CodeOpener implements monaco.editor.ICodeEditorOpener {
-  openCodeEditor(
-    source: monaco.editor.ICodeEditor,
-    resource: monaco.Uri,
-    selectionOrPosition?: monaco.IRange | monaco.IPosition,
-  ): boolean {
-    const resolvedPath = resolveScriptFilePath(resource.path);
-    if (resolvedPath === null) {
+export function openCodeEditor(
+  source: monaco.editor.ICodeEditor,
+  resource: monaco.Uri,
+  selectionOrPosition?: monaco.IRange | monaco.IPosition,
+): boolean {
+  const resolvedPath = resolveScriptFilePath(resource.path);
+  if (resolvedPath === null) {
+    return false;
+  }
+
+  const [hostname, path] = resolvedPath.split("/", 2);
+
+  // check if we have an open file already; if so, show it at the requested position
+  const openScript = openScripts.find((s) => s.path === path && s.hostname === hostname);
+  if (openScript) {
+    if (openScript.model === undefined || openScript.model === null || openScript.model.isDisposed()) {
+      openScript.regenerateModel();
+    }
+    currentScript = openScript;
+    source.setModel(openScript.model);
+  } else {
+    const server = GetServer(hostname);
+    if (server === null) {
       return false;
     }
 
-    const [hostname, path] = resolvedPath.split("/", 2);
-
-    // check if we have an open file already; if so, show it at the requested position
-    const openScript = openScripts.find((s) => s.path === path && s.hostname === hostname);
-    if (openScript) {
-      if (openScript.model === undefined || openScript.model === null || openScript.model.isDisposed()) {
-        openScript.regenerateModel();
-      }
-      currentScript = openScript;
-      source.setModel(openScript.model);
-    } else {
-      const server = GetServer(hostname);
-      if (server === null) {
-        return false;
-      }
-
-      const script = server.scripts.get(path as ScriptFilePath);
-      if (script === undefined) {
-        return false;
-      }
-
-      // Open script
-      const newScript = new OpenScript(
-        path as ScriptFilePath,
-        script.code,
-        hostname,
-        new monaco.Position(0, 0),
-        makeModel(hostname, path, script.code),
-        vim,
-      );
-      openScripts.push(newScript);
-      currentScript = newScript;
-      source.setModel(newScript.model);
+    const script = server.scripts.get(path as ScriptFilePath);
+    if (script === undefined) {
+      return false;
     }
 
-    if (selectionOrPosition === undefined) {
-      return true;
-    }
+    // Open script
+    const newScript = new OpenScript(
+      path as ScriptFilePath,
+      script.code,
+      hostname,
+      new monaco.Position(0, 0),
+      makeModel(hostname, path, script.code),
+      vim,
+    );
+    openScripts.push(newScript);
+    currentScript = newScript;
+    source.setModel(newScript.model);
+  }
 
-    if ((selectionOrPosition as monaco.IRange) !== undefined) {
-      const range = selectionOrPosition as monaco.IRange;
-
-      source.setSelection(range);
-      source.revealLineInCenter(range.startLineNumber);
-    } else if ((selectionOrPosition as monaco.IPosition) !== undefined) {
-      const pos = selectionOrPosition as monaco.IPosition;
-
-      source.setPosition(pos);
-      source.revealLineInCenter(pos.lineNumber);
-    }
-
-    source.focus();
+  if (selectionOrPosition === undefined) {
     return true;
   }
+
+  if ((selectionOrPosition as monaco.IRange) !== undefined) {
+    const range = selectionOrPosition as monaco.IRange;
+
+    source.setSelection(range);
+    source.revealLineInCenter(range.startLineNumber);
+  } else if ((selectionOrPosition as monaco.IPosition) !== undefined) {
+    const pos = selectionOrPosition as monaco.IPosition;
+
+    source.setPosition(pos);
+    source.revealLineInCenter(pos.lineNumber);
+  }
+
+  source.focus();
+  return true;
 }
 
 function Root(props: IProps): React.ReactElement {
